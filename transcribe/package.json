@@ -1,0 +1,13 @@
+{
+  "name": "transcribe",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "transcribe": "node transcribe.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "openai": "^4.55.0"
+  }
+}

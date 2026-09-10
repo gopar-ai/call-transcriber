@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Call Transcriber</title>
+    <style>
+      :root {
+        --bg: #0b0d12;
+        --card: #1c1f26;
+        --text: #f4f5f7;
+        --muted: #9aa0ab;
+        --accent: #00f5c4;
+        --ok: #3ddc84;
+        --err: #ff6b6b;
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; padding: 0; }
+      body {
+        font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow-x: hidden;
+      }
+      .card {
+        width: 100%;
+        max-width: 480px;
+        background: var(--card);
+        border-radius: 16px;
+        padding: 32px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+      .brand img { width: 30px; height: 30px; border-radius: 8px; }
+      .brand .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--err);
+        animation: pulse 1.6s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.4; transform: scale(0.8); }
+      }
+      .brand h1 { font-size: 15px; font-weight: 600; margin: 0; color: var(--muted); letter-spacing: 0.02em; }
+      .sig { font-size: 10px; color: #00f5c4; opacity: 0.7; text-align: right; margin-top: 18px; letter-spacing: 0.04em; }
+      #status {
+        font-size: 17px;
+        line-height: 1.5;
+        margin-bottom: 24px;
+        min-height: 52px;
+      }
+      #status.ok { color: var(--ok); }
+      #status.err { color: var(--err); }
+      button {
+        all: unset;
+        cursor: pointer;
+        width: 100%;
+        text-align: center;
+        padding: 14px;
+        border-radius: 10px;
+        font-size: 15px;
+        font-weight: 600;
+        background: var(--accent);
+        color: #0b0d12;
+        transition: opacity 0.15s ease;
+      }
+      button:disabled { opacity: 0.35; cursor: default; }
+      button:not(:disabled):hover { opacity: 0.9; }
+      .hint { font-size: 12px; color: var(--muted); margin-top: 16px; line-height: 1.5; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="brand"><img src="icons/icon48.png" alt="" /><span class="dot"></span><h1>CALL TRANSCRIBER</h1></div>
+      <div id="status">Iniciando…</div>
+      <div id="webrtcReason" class="hint" style="display:none; color:#ffb020;"></div>
+      <button id="stop" disabled>Detener y guardar</button>
+      <div class="hint">
+        Elige la <strong>pestaña de la llamada</strong> (no "Toda la pantalla" ni
+        "Ventana") para poder seguir usando "Presentar" dentro de Meet sin
+        conflicto. No cierres esta pestaña mientras dure la llamada — también
+        puedes usar "Dejar de compartir" en la barra de Chrome para terminar.
+      </div>
+      <div class="sig">⚡ by Jan</div>
+    </div>
+    <script src="recorder.js"></script>
+  </body>
+</html>
