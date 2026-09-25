@@ -31,7 +31,7 @@ Salida de la llamada ──► detectada por el DOM ──► corta y sube
 
 El hook se inyecta en `document_start`, antes de que corra el código de Meet — si entrara después, las conexiones ya estarían creadas y no habría nada que parchear.
 
-Si la subida falla (sin red, backend caído), la grabación se descarga en local en vez de perderse.
+Si la subida falla (sin red, backend caído, servidor lento), la grabación se descarga en local en vez de perderse. Del lado del servidor, el audio se recomprime y se parte en trozos de 15 minutos antes de ir a Whisper, que rechaza archivos de más de 25 MB: sin eso, toda llamada de más de ~30 minutos fallaba.
 
 ---
 

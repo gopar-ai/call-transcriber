@@ -204,8 +204,8 @@ async function stop() {
 
     const res = await withTimeout(
       fetch(`${SERVER_URL}/calls`, { method: "POST", body: formData }),
-      120000,
-      "El servidor tardó más de 2 minutos en responder."
+      600000,
+      "El servidor tardó más de 10 minutos en responder."
     );
     const data = await res.json();
     if (!data.ok) throw new Error(data.error || "El servidor regresó un error");
