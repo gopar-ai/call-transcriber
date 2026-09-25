@@ -1,10 +1,15 @@
 (function () {
   if (document.getElementById("call-transcriber-widget")) return;
 
-  // Cambia esto por la URL de tu propio backend desplegado (ver server/README).
   const SERVER_URL = "https://your-backend.up.railway.app";
   const MARK_EXT = "call-transcriber-ext";
   const MARK_HOOK = "call-transcriber-hook";
+
+  // Controles que Meet solo pinta cuando ya estás dentro de la llamada. Sirven
+  // para las dos direcciones: detectar que entraste y detectar que colgaste.
+  const SELECTOR_EN_LLAMADA =
+    '[aria-label*="Salir de la llamada" i], [aria-label*="Abandonar la llamada" i], ' +
+    '[aria-label*="Leave call" i], [aria-label*="micrófono" i], [aria-label*="microphone" i]';
 
   function mount() {
     if (document.getElementById("call-transcriber-widget") || !document.body) return;
@@ -18,6 +23,7 @@
     let destinationActive = "work";
     let stopHangupWatcher = null;
     let usingWebRtc = false;
+    let cancelarEspera = null;
 
     // Detecta que colgaste/saliste de la llamada (los controles de Meet ya
     // no están en la página) y detiene la grabación sola, sin que tengas
@@ -25,10 +31,7 @@
     function watchForHangup(onHangup) {
       let misses = 0;
       const interval = setInterval(() => {
-        const inCall = !!document.querySelector(
-          '[aria-label*="Salir de la llamada" i], [aria-label*="Abandonar la llamada" i], ' +
-            '[aria-label*="Leave call" i], [aria-label*="micrófono" i], [aria-label*="microphone" i]'
-        );
+        const inCall = !!document.querySelector(SELECTOR_EN_LLAMADA);
         if (inCall) {
           misses = 0;
           return;
@@ -114,22 +117,84 @@
 
       document.getElementById("ct-start").addEventListener("click", () => {
         recordVideoActive = document.getElementById("ct-record-video").checked;
-        // El título de la pestaña de Meet suele traer el nombre del evento del
-        // calendario cuando la llamada viene de una invitación — si no, cae a
-        // un genérico en el backend.
-        const meetingName = encodeURIComponent(document.title.replace(/\s*-\s*Google Meet\s*$/i, "").trim());
-        renderPending();
-
-        if (recordVideoActive) {
-          // Con video: usa el método de siempre (captura de pestaña) — el
-          // método sin captura solo soporta audio por ahora.
-          openTabCaptureFlow(meetingName);
-        } else {
-          tryWebRtcCapture(meetingName);
-        }
+        iniciarTranscripcion();
       });
 
       document.getElementById("ct-dismiss").addEventListener("click", () => widget.remove());
+    }
+
+    function iniciarTranscripcion() {
+      // El título de la pestaña de Meet suele traer el nombre del evento del
+      // calendario cuando la llamada viene de una invitación — si no, cae a
+      // un genérico en el backend.
+      const meetingName = encodeURIComponent(document.title.replace(/\s*-\s*Google Meet\s*$/i, "").trim());
+      renderPending();
+
+      if (recordVideoActive) {
+        // Con video: usa el método de siempre (captura de pestaña) — el
+        // método sin captura solo soporta audio por ahora.
+        openTabCaptureFlow(meetingName);
+      } else {
+        tryWebRtcCapture(meetingName);
+      }
+    }
+
+    // Espera a que Meet pinte los controles de llamada. Montar el widget no
+    // basta: el script corre también en la sala de espera y en la pantalla
+    // previa, donde todavía no hay audio que capturar.
+    // Margen entre que aparecen los controles y que arranca la captura: las
+    // conexiones WebRTC tardan un momento en quedar listas, y si se arranca
+    // antes el enganche no encuentra audio y cae al método con selector de
+    // pantalla — que abriría un diálogo solo, sin que nadie lo pidiera.
+    const ESPERA_ANTES_DE_ARRANCAR_MS = 3000;
+
+    function esperarEntrarALlamada(alEntrar) {
+      let cancelado = false;
+      let temporizador = null;
+      let interval = null;
+
+      const arrancarConMargen = () => {
+        temporizador = setTimeout(() => {
+          if (!cancelado) alEntrar();
+        }, ESPERA_ANTES_DE_ARRANCAR_MS);
+      };
+
+      if (document.querySelector(SELECTOR_EN_LLAMADA)) {
+        arrancarConMargen();
+      } else {
+        interval = setInterval(() => {
+          if (!document.querySelector(SELECTOR_EN_LLAMADA)) return;
+          clearInterval(interval);
+          arrancarConMargen();
+        }, 1500);
+      }
+
+      return () => {
+        cancelado = true;
+        clearInterval(interval);
+        clearTimeout(temporizador);
+      };
+    }
+
+    function renderEsperando() {
+      widget.innerHTML = `
+        <div class="ct-box">
+          <span class="ct-grip" title="Arrastra para mover">⠿</span>
+          <img class="ct-logo" src="${logoUrl}" alt="" />
+          <span class="ct-dot"></span>
+          <span class="ct-text">Se transcribe sola al entrar a la llamada</span>
+          <button class="ct-dismiss" id="ct-dismiss" title="No transcribir esta llamada">✕</button>
+        </div>
+        <div class="ct-signature">⚡ by Jan</div>
+      `;
+      makeDraggable(widget.querySelector(".ct-grip"));
+      // Cancelar el arranque automático no quita el widget: cae al modo manual,
+      // que es donde viven el interruptor de video y la elección de destino.
+      document.getElementById("ct-dismiss").addEventListener("click", () => {
+        cancelarEspera?.();
+        cancelarEspera = null;
+        renderIdle();
+      });
     }
 
     function openTabCaptureFlow(meetingName, webrtcReason) {
@@ -228,11 +293,24 @@
           <span class="ct-dot"></span>
           <span class="ct-text">${label}</span>
           ${videoBtn}
+          <div class="ct-dest" title="A qué Drive se guarda esta llamada">
+            <button class="ct-dest-btn ${destinationActive === "work" ? "ct-dest-active" : ""}" data-dest="work">WORK</button>
+            <button class="ct-dest-btn ${destinationActive === "personal" ? "ct-dest-active" : ""}" data-dest="personal">PERS</button>
+          </div>
           <button id="ct-stop" title="Detiene la grabación sin salir de la llamada">⏹ Detener</button>
         </div>
         <div class="ct-signature">⚡ by Jan</div>
       `;
       makeDraggable(widget.querySelector(".ct-grip"));
+
+      // El destino se manda hasta que se sube el archivo, así que se puede
+      // cambiar a media llamada — necesario ahora que arranca sola en el destino por defecto.
+      widget.querySelectorAll(".ct-dest-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          destinationActive = btn.dataset.dest;
+          renderActive();
+        });
+      });
 
       document.getElementById("ct-add-video")?.addEventListener("click", () => {
         if (usingWebRtc) {
@@ -291,7 +369,11 @@
       }
     });
 
-    renderIdle();
+    // Arranca sola: toda llamada se transcribe salvo que la canceles. Solo
+    // audio y al Drive por defecto, que es el caso de siempre; el video y el
+    // otro destino se eligen durante la llamada desde el propio widget.
+    renderEsperando();
+    cancelarEspera = esperarEntrarALlamada(iniciarTranscripcion);
   }
 
   if (document.readyState === "loading") {

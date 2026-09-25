@@ -4,7 +4,7 @@ chrome.runtime.onMessage.addListener((message, sender) => {
 
     const openWith = (streamId, tcError) => {
       const url = chrome.runtime.getURL(
-        `recorder.html?recordVideo=${message.recordVideo}&meetingName=${message.meetingName || ""}&destination=${message.destination || "detecta"}${
+        `recorder.html?recordVideo=${message.recordVideo}&meetingName=${message.meetingName || ""}&destination=${message.destination || "work"}${
           streamId ? `&streamId=${streamId}` : ""
         }${tcError ? `&tcError=${encodeURIComponent(tcError)}` : ""}${
           message.webrtcReason ? `&webrtcReason=${encodeURIComponent(message.webrtcReason)}` : ""
