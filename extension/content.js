@@ -243,6 +243,25 @@
       }, 3000);
     }
 
+    // Los content scripts no tienen chrome.downloads: se descarga con un
+    // enlace en la propia página, que es lo mismo que un "guardar como".
+    function descargarRespaldo(blob) {
+      const nombre = `llamada-audio-${new Date().toISOString().replace(/[:.]/g, "-")}.webm`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = nombre;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      return nombre;
+    }
+
+    // El servidor parte el audio y transcribe por trozos, así que una llamada
+    // larga tarda varios minutos; el límite es holgado para no cortar antes.
+    const TIMEOUT_SUBIDA_MS = 10 * 60 * 1000;
+
     async function uploadAudioBlob(blob, meetingName) {
       try {
         const formData = new FormData();
@@ -251,14 +270,31 @@
         formData.append("meetingName", meetingName);
         formData.append("destination", destinationActive);
 
-        const res = await fetch(`${SERVER_URL}/calls`, { method: "POST", body: formData });
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_SUBIDA_MS);
+        let res;
+        try {
+          res = await fetch(`${SERVER_URL}/calls`, { method: "POST", body: formData, signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "El servidor regresó un error");
 
         window.open(data.docUrl, "_blank");
       } catch (err) {
         console.error("[call-transcriber] error subiendo (modo sin captura):", err);
-        alert("Call Transcriber: no se pudo subir la grabación (" + err.message + "). Revisa tu conexión.");
+        // Pase lo que pase con el servidor, la grabación no se pierde: queda
+        // en Descargas para subirla después.
+        const motivo = err.name === "AbortError" ? "el servidor tardó más de 10 minutos" : err.message;
+        const nombre = descargarRespaldo(blob);
+        alert(
+          "Call Transcriber: no se pudo subir la grabación (" +
+            motivo +
+            "). Se descargó en Descargas como " +
+            nombre +
+            " para no perderla."
+        );
       } finally {
         widget.remove();
       }
