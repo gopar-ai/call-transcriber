@@ -4,9 +4,11 @@ Extensión de Chrome que detecta la entrada a una llamada, la transcribe y graba
 
 ## Demo
 
-> Pendiente: captura del widget flotante durante una llamada (`docs/screenshots/widget-en-llamada.png`).
+El widget durante una llamada:
 
-El widget se arrastra, recuerda su posición, dice en texto explícito qué está haciendo ("Transcribiendo" o "Grabando video y transcribiendo") y trae un selector de destino para enrutar el documento a un Drive u otro.
+![Widget flotante durante una llamada de Meet](docs/screenshots/widget-en-llamada.png)
+
+Se arrastra, recuerda su posición, y dice en texto explícito qué está haciendo — "Transcribiendo" o "Grabando video y transcribiendo" — para que nunca haya duda de si el video está entrando o no. El destino entre paréntesis es el selector de Drive: cada llamada se puede enrutar a una unidad distinta.
 
 ## Cómo funciona
 
