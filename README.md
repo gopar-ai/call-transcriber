@@ -1,63 +1,69 @@
-# Transcripción automática de llamadas de Meet
+# Transcripción y grabación automática de llamadas de Meet
 
-Extensión de Chrome que detecta cuando entras a una llamada, la transcribe sola y deja un Google Doc por llamada con resumen ejecutivo, puntos clave y pendientes como casillas reales — sin que toques un botón, y sin pelearse con "Presentar pantalla".
+Extensión de Chrome que detecta la entrada a una llamada, la transcribe y graba sola, y deja un Google Doc por llamada con resumen ejecutivo, puntos clave y pendientes como casillas reales — sin pasos manuales y sin bloquear el "Presentar pantalla".
 
-## Para qué sirve
+## Demo
 
-Tomar notas en una llamada es elegir entre dos cosas mal hechas: o escuchas o escribes. Y las grabaciones que quedan como un archivo de audio de 40 minutos tampoco sirven, porque nadie las vuelve a abrir.
+> Pendiente: captura del widget flotante durante una llamada (`docs/screenshots/widget-en-llamada.png`).
 
-Aquí la llamada termina y el documento ya está escrito. No hay que acordarse de darle a grabar, ni de mandarlo, ni de resumirlo después. Los pendientes quedan como casillas que de verdad se pueden marcar, así que la nota funciona como lista de trabajo y no solo como archivo muerto.
-
-Y lo que lo hace usable en el día a día: **puedes presentar tu pantalla en la misma llamada sin que se rompa nada.** Esa es justamente la razón por la que la mayoría de las herramientas de este tipo se terminan desinstalando.
+El widget se arrastra, recuerda su posición, dice en texto explícito qué está haciendo ("Transcribiendo" o "Grabando video y transcribiendo") y trae un selector de destino para enrutar el documento a un Drive u otro.
 
 ## Cómo funciona
 
 ```
-Entras a una llamada de Meet
-          │
-          ▼
-La extensión lo detecta sola  ──►  widget flotante, arrastrable
-          │
-          ▼
-Audio leído de las conexiones WebRTC internas de Meet
-   (tu micrófono + cada participante, mezclados)
-          │
-          ▼
-Al colgar — también detectado solo
-          │
-          ├─► Whisper          ──►  transcripción
-          ├─► GPT-4o-mini      ──►  resumen, puntos clave, pendientes
-          └─► Google Docs API  ──►  un documento por llamada
+Entrada a la llamada ──► detectada por el DOM de Meet
+     │
+     ▼
+webrtc-hook.js (mundo MAIN, document_start)
+     │   parchea RTCPeerConnection + getUserMedia
+     ├─► pistas de audio: micrófono + cada participante
+     └─► Web Audio API (mezcla) ──► MediaRecorder
+     │
+     ▼
+Salida de la llamada ──► detectada por el DOM ──► corta y sube
+     │
+     ├─► Whisper          ──► transcripción
+     ├─► GPT-4o-mini      ──► JSON estructurado (resumen, puntos, pendientes)
+     └─► Google Docs API  ──► un documento por llamada, con formato real
 ```
 
-Si la subida falla porque no hay red o el backend está caído, la grabación se descarga en local en vez de perderse.
+El hook se inyecta en `document_start`, antes de que corra el código de Meet — si entrara después, las conexiones ya estarían creadas y no habría nada que parchear.
+
+Si la subida falla (sin red, backend caído), la grabación se descarga en local en vez de perderse.
 
 ---
 
-## El truco técnico
+## Por qué no usa captura de pantalla
 
-La forma obvia de construir esto es capturar el audio con `getDisplayMedia()`, el selector de "elige qué compartir". Funciona, pero tiene un costo que lo vuelve inservible: mientras esa pestaña se está capturando así, ya no puedes usar el "presentar pantalla" de la propia plataforma sin conflicto. Para quien presenta seguido en llamadas, eso descalifica la herramienta.
+La forma obvia de grabar una llamada en el navegador es `getDisplayMedia()`, el selector de "elige qué compartir". Funciona, pero mientras esa pestaña se captura así no se puede usar el "presentar pantalla" de la propia plataforma sin conflicto — para quien presenta seguido, eso descalifica la herramienta.
 
-La salida está en que Meet es una aplicación WebRTC: el audio de la llamada ya pasa por objetos `RTCPeerConnection` dentro del JavaScript de la página antes de llegar a tus bocinas. Un content script en el mundo `MAIN`, inyectado en `document_start` — antes de que corra el código de Meet — parchea `RTCPeerConnection` y `getUserMedia` para leer esas pistas de audio directo, las mezcla con la Web Audio API y graba con `MediaRecorder`.
+Meet es una aplicación WebRTC: el audio ya pasa por objetos `RTCPeerConnection` dentro del JavaScript de la página antes de llegar a las bocinas. El hook lee esas pistas directo, así que no hay captura de ningún tipo y nunca compite con presentar.
 
-Cero captura de pantalla o de pestaña. Por eso nunca compite con presentar.
+El video es la excepción — no hay forma de leer pixeles sin capturar — así que es opcional y usa una cadena de respaldo: `chrome.tabCapture` primero, que no muestra selector, y solo si no está disponible cae a `getDisplayMedia`.
 
-El video es el único caso que sí necesita captura, porque no hay forma de leer pixeles sin ella. Por eso es opcional y usa una cadena de respaldo: primero `chrome.tabCapture`, que no muestra selector, y solo si no está disponible cae al selector de `getDisplayMedia`.
+## Estructura
 
-## El widget en la llamada
+```
+extension/
+  content.js        – widget flotante inyectado en Meet (mundo ISOLATED)
+  webrtc-hook.js    – parcha RTCPeerConnection y getUserMedia (mundo MAIN)
+  background.js     – service worker: abre la pestaña de respaldo, relevo de estado
+  recorder.html/js  – flujo de respaldo (tabCapture → getDisplayMedia)
+  popup.html/js     – entrada manual fuera de Meet
 
-> Pendiente: captura del widget flotante durante una llamada (`docs/screenshots/widget-en-llamada.png`).
-
-El widget se arrastra y recuerda dónde lo dejaste, dice en texto explícito qué está haciendo — "Transcribiendo" o "Grabando video y transcribiendo", para que nunca haya duda — y trae un selector de destino para mandar el documento a un Drive u otro según la cuenta.
-
----
+server/
+  index.js          – endpoint que recibe audio (+ video opcional) y arma el Doc
+  lib/transcribe.js – Whisper
+  lib/summarize.js  – GPT-4o-mini con salida JSON estructurada
+  lib/drive.js      – Docs/Drive API vía batchUpdate con aritmética de índices
+```
 
 ## Setup
 
 **Extensión**
 
-1. `chrome://extensions` → activar Modo desarrollador → "Cargar descomprimida" → elegir `extension/`
-2. Cambiar la constante `SERVER_URL` en `extension/content.js` y `extension/recorder.js` para que apunte a tu backend.
+1. `chrome://extensions` → Modo desarrollador → "Cargar descomprimida" → elegir `extension/`
+2. Apuntar la constante `SERVER_URL` en `extension/content.js` y `extension/recorder.js` al backend propio.
 
 **Backend**
 
@@ -72,29 +78,21 @@ npm start
 
 | Variable | Descripción |
 |---|---|
-| `OPENAI_API_KEY` | Whisper para transcribir y GPT-4o-mini para el resumen |
+| `OPENAI_API_KEY` | Whisper (transcripción) + GPT-4o-mini (resumen) |
 | `GOOGLE_SERVICE_ACCOUNT_JSON` | Credenciales de la cuenta de servicio, el JSON completo en una línea |
-| `DRIVE_FOLDER_ID` | Carpeta donde caen los documentos del destino principal |
-| `DRIVE_FOLDER_ID_PERSONAL` | Segundo destino opcional — el widget trae un selector para mandar cada llamada a un Drive distinto |
+| `DRIVE_FOLDER_ID` | Carpeta destino del documento |
+| `DRIVE_FOLDER_ID_PERSONAL` | Segundo destino opcional — el widget trae el selector para elegir cuál |
 
-## Un detalle de Google Drive que cuesta horas
-
-Las cuentas de servicio no tienen cuota de almacenamiento propia. Crear un archivo directamente en una carpeta de "Mi unidad" falla con `storageQuotaExceeded`, **aunque la carpeta esté compartida con la cuenta de servicio como editor**. La carpeta destino tiene que vivir dentro de una **unidad compartida**, donde el almacenamiento se cobra a la organización y no a quien creó el archivo. Y `drive.files.create` necesita `supportsAllDrives: true` explícito.
-
-## Notas
-
-- Varias personas pueden transcribir la misma llamada de forma independiente: nada del lado del servidor está atado a un usuario, cada navegador sube a donde esté configurado.
-- La salida del resumen es JSON estructurado, no texto libre parseado a mano.
-- El documento se arma con `batchUpdate` y aritmética de índices, para que los encabezados, viñetas, casillas e hipervínculos sean formato real de Google Docs y no texto que lo imite.
+**Detalle de Drive que cuesta horas:** las cuentas de servicio no tienen cuota de almacenamiento propia. Crear el archivo en una carpeta de "Mi unidad" falla con `storageQuotaExceeded` aunque la carpeta esté compartida con la cuenta como editor. La carpeta destino tiene que vivir en una **unidad compartida**, donde el almacenamiento se cobra a la organización. Y `drive.files.create` necesita `supportsAllDrives: true` explícito.
 
 ---
 
 ## Tech stack
 
-- **Extensión de Chrome (Manifest V3)** — content scripts en mundo `MAIN` e `ISOLATED`, service worker
-- **WebRTC + Web Audio API** — lectura y mezcla del audio sin capturar pantalla
-- **MediaRecorder** — grabación en el navegador
-- **Node.js + Express** — backend que recibe, transcribe y genera el documento
+- **Manifest V3 con content scripts en dos mundos** — el hook necesita el mundo `MAIN` para ver los objetos de la página; el widget vive en `ISOLATED` porque no necesita ese acceso y así no se expone
+- **WebRTC + Web Audio API** — lee y mezcla el audio sin capturar pantalla, que es lo que permite presentar durante la grabación
+- **MediaRecorder** — graba en el navegador, sin subir audio en vivo
+- **Node.js + Express** — el backend solo recibe, transcribe y escribe el Doc; no guarda estado
 - **Whisper** — transcripción
-- **GPT-4o-mini** — resumen con salida estructurada
-- **Google Docs y Drive API** — documento con formato real y subida del video
+- **GPT-4o-mini** — resumen con salida estructurada, no texto libre parseado a mano
+- **Google Docs API por `batchUpdate`** — encabezados, viñetas, casillas e hipervínculos como formato real y no texto que lo imite
